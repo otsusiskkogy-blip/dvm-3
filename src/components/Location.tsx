@@ -1,12 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
-import { Link, Loader2, AlertCircle, AlertTriangle, Search, X, ChevronUp, ChevronDown as ChevronDownIcon, ChevronsUpDown, Filter, Check, Columns2, Info, Copy, Trash2, ExternalLink, Bookmark, Pencil, CheckCheck, Navigation2, LayoutList } from "lucide-react"
-import { toast } from "sonner"
+import { Loader2, AlertCircle, AlertTriangle, Search, X, ChevronUp, ChevronDown as ChevronDownIcon, ChevronsUpDown, Filter, Check, Columns2, Info, Navigation2, LayoutList } from "lucide-react"
 import { cn, parseSmartQuery } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { RowInfoModal } from "@/components/RowInfoModal"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useEditMode } from "@/contexts/EditModeContext"
 import { useRoadDistances } from "@/hooks/use-road-distances"
 import { useRegisterRefresh } from "@/contexts/RefreshContext"
@@ -159,14 +157,14 @@ const DELIVERY_ITEMS: DeliveryItem[] = [
   },
   {
     value: "Weekday",
-    label: "Weekday",
+    label: "WD",
     description: "Sun – Thu",
     color: "bg-sky-100 dark:bg-sky-900/40",
     textColor: "text-sky-700 dark:text-sky-300",
   },
   {
     value: "Weekday 2",
-    label: "Weekday 2",
+    label: "WE",
     description: "Mon – Fri",
     color: "bg-blue-100 dark:bg-blue-900/40",
     textColor: "text-blue-700 dark:text-blue-300",
@@ -195,10 +193,6 @@ interface ViewState {
   ctitle?: string // custom table title
 }
 
-function encodeViewState(state: ViewState): string {
-  return btoa(encodeURIComponent(JSON.stringify(state)))
-}
-
 function readHashState(): ViewState | null {
   try {
     const hash = window.location.hash
@@ -207,80 +201,6 @@ function readHashState(): ViewState | null {
   } catch {
     return null
   }
-}
-
-function readHashStateFromUrl(url: string): ViewState | null {
-  try {
-    const hashIndex = url.indexOf("#loc=")
-    if (hashIndex === -1) return null
-    return JSON.parse(decodeURIComponent(atob(url.slice(hashIndex + 5)))) as ViewState
-  } catch {
-    return null
-  }
-}
-
-// ─── Saved Links ──────────────────────────────────────────────────────────────
-interface SavedLink {
-  id: string
-  label: string
-  longUrl: string
-  shortUrl: string
-  createdAt: string
-  type: "custom" | "share"
-}
-
-const LINKS_KEY = "ddata_saved_links"
-const loadSavedLinks = (): SavedLink[] => {
-  try {
-    const stored = JSON.parse(localStorage.getItem(LINKS_KEY) ?? "[]")
-    if (!Array.isArray(stored)) return []
-    return stored.map((item: any) => {
-      const type = item.type === "custom" || item.type === "share"
-        ? item.type
-        : readHashStateFromUrl(item.longUrl)?.pts?.length
-          ? "custom"
-          : "share"
-      return {
-        id: item.id ?? crypto.randomUUID(),
-        label: item.label ?? "Saved link",
-        longUrl: item.longUrl ?? "",
-        shortUrl: item.shortUrl ?? item.longUrl ?? "",
-        createdAt: item.createdAt ?? new Date().toISOString(),
-        type,
-      }
-    })
-  } catch {
-    return []
-  }
-}
-const persistLinks = (links: SavedLink[]) => {
-  localStorage.setItem(LINKS_KEY, JSON.stringify(links))
-}
-
-const shortenUrl = async (longUrl: string): Promise<string> => {
-  const services = [
-    (url: string) => `https://is.gd/create.php?format=json&url=${encodeURIComponent(url)}`,
-  ]
-
-  for (const buildUrl of services) {
-    try {
-      const res = await fetch(buildUrl(longUrl))
-      if (!res.ok) continue
-      const text = await res.text()
-      const trimmed = text.trim()
-      if (!trimmed) continue
-      if (trimmed.startsWith("{") && trimmed.includes("shorturl")) {
-        const json = JSON.parse(trimmed) as { shorturl?: string }
-        if (json.shorturl) return json.shorturl
-      } else if (trimmed.startsWith("http")) {
-        return trimmed
-      }
-    } catch {
-      continue
-    }
-  }
-
-  return longUrl
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -312,12 +232,6 @@ export function DeliveryTableDialog() {
   const [filterTab, setFilterTab]               = useState<"routes" | "delivery" | "columns">("routes")
   const [sortOpen, setSortOpen]                 = useState(false)
   const [isOptimized, setIsOptimized]           = useState(false)
-  const [linksTab, setLinksTab]                 = useState<"custom" | "share" | "saved">("custom")
-  const [selectedCodes, setSelectedCodes]       = useState<Set<string>>(new Set())
-  const [customTableTitle, setCustomTableTitle] = useState("")
-  const [ctGenerating, setCtGenerating]         = useState(false)
-  const [ctGeneratedLink, setCtGeneratedLink]   = useState<string | null>(null)
-  const [shareGeneratedLink, setShareGeneratedLink] = useState<string | null>(null)
   const [visibleColumns, setVisibleColumns]     = useState<Set<ColumnKey>>(
     initHash.current?.vc ? new Set(initHash.current.vc) : new Set(DEFAULT_VISIBLE_COLUMNS)
   )
@@ -562,159 +476,6 @@ export function DeliveryTableDialog() {
     return distances
   }, [displayed, locationRoadDistances])
 
-  const [savedLinks, setSavedLinks]     = useState<SavedLink[]>(loadSavedLinks)
-  const [linksOpen, setLinksOpen]       = useState(false)
-  const [isShortening, setIsShortening] = useState(false)
-  const [editingLinkId, setEditingLinkId] = useState<string | null>(null)
-  const [editingLabel, setEditingLabel]   = useState("")
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
-  const [generateConfirm, setGenerateConfirm] = useState(false)
-
-  const customSavedLinks = useMemo(() => savedLinks.filter(link => link.type === "custom"), [savedLinks])
-  const shareSavedLinks = useMemo(() => savedLinks.filter(link => link.type === "share"), [savedLinks])
-
-  const commitEdit = (id: string) => {
-    const trimmed = editingLabel.trim()
-    if (!trimmed) return setEditingLinkId(null)
-    const updated = savedLinks.map(l => l.id === id ? { ...l, label: trimmed } : l)
-    setSavedLinks(updated)
-    persistLinks(updated)
-    setEditingLinkId(null)
-  }
-
-  const confirmDelete = (id: string) => {
-    const updated = savedLinks.filter(l => l.id !== id)
-    setSavedLinks(updated)
-    persistLinks(updated)
-    setDeleteConfirmId(null)
-  }
-
-  const renderSavedLinkItem = (link: SavedLink) => {
-    const isEditing  = editingLinkId === link.id
-    const isDeleting = deleteConfirmId === link.id
-    return (
-      <div key={link.id} className="px-3 py-3 hover:bg-muted/25 transition-colors bg-card/50">
-        {isEditing ? (
-          <div className="space-y-2 mb-1.5">
-            <input
-              autoFocus
-              value={editingLabel}
-              onChange={e => setEditingLabel(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") commitEdit(link.id); if (e.key === "Escape") setEditingLinkId(null) }}
-              className="w-full text-[12px] font-semibold bg-muted/60 border border-border rounded px-2 py-1 outline-none focus:ring-1 focus:ring-primary/50"
-            />
-            <div className="flex flex-wrap items-center gap-1 mt-2">
-              <button
-                onClick={() => commitEdit(link.id)}
-                className="flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => setEditingLinkId(null)}
-                className="flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <p className="text-[12px] font-semibold text-foreground truncate mb-0.5">{link.label}</p>
-        )}
-        <p className="text-[11px] text-primary/80 break-all font-mono">{link.shortUrl}</p>
-        <p className="text-[10px] text-muted-foreground/55 mt-0.5">
-          {new Date(link.createdAt).toLocaleString("en-MY", { dateStyle: "short", timeStyle: "short" })}
-        </p>
-        {isDeleting && (
-          <div className="flex items-center gap-2 mt-2 p-2 rounded-lg bg-destructive/8 border border-destructive/20">
-            <span className="text-[11px] text-destructive font-medium flex-1">Delete this link?</span>
-            <button onClick={() => confirmDelete(link.id)} className="h-6 px-2.5 rounded text-[11px] font-semibold bg-destructive text-white hover:bg-destructive/90 transition-colors">Yes</button>
-            <button onClick={() => setDeleteConfirmId(null)} className="h-6 px-2.5 rounded text-[11px] font-semibold bg-muted hover:bg-muted/80 text-foreground transition-colors">No</button>
-          </div>
-        )}
-        {!isEditing && !isDeleting && (
-          <div className="flex items-center gap-0.5 mt-2">
-            <button onClick={() => { setEditingLinkId(link.id); setEditingLabel(link.label) }} className="flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"><Pencil className="size-3" />Edit</button>
-            <button onClick={() => navigator.clipboard.writeText(link.shortUrl).then(() => toast.success("Copied!"))} className="flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"><Copy className="size-3" />Copy</button>
-            <a href={link.shortUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"><ExternalLink className="size-3" />Open</a>
-            <button onClick={() => setDeleteConfirmId(link.id)} className="flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors ml-auto"><Trash2 className="size-3" />Delete</button>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  const generateCustomTableLink = async () => {
-    const codes = [...selectedCodes]
-    if (codes.length === 0) { toast.error("Select at least one point"); return }
-    const encoded = encodeViewState({
-      s: "", r: [], d: [],
-      sk: "code", sd: "asc",
-      vc: ["no", "code", "name", "delivery", "action"],
-      ro: 1,
-      pts: codes,
-      ctitle: customTableTitle.trim() || "Custom Location Table",
-    })
-    const longUrl = `${window.location.origin}/#loc=${encoded}`
-    setCtGenerating(true)
-    const shortUrl = await shortenUrl(longUrl)
-    setCtGenerating(false)
-    setCtGeneratedLink(shortUrl)
-    const newLink: SavedLink = {
-      id: crypto.randomUUID(),
-      label: customTableTitle.trim() || "Custom Location Table",
-      longUrl,
-      shortUrl,
-      createdAt: new Date().toISOString(),
-      type: "custom",
-    }
-    const updated = [newLink, ...savedLinks].slice(0, 50)
-    setSavedLinks(updated)
-    persistLinks(updated)
-    navigator.clipboard.writeText(shortUrl)
-      .then(() => toast.success("Custom table link copied!"))
-      .catch(() => {})
-  }
-
-  const generateLink = async () => {
-    const encoded = encodeViewState({
-      s:  search,
-      r:  [...filterRoutes],
-      d:  [...filterDeliveries],
-      sk: sortKey,
-      sd: sortDir,
-      vc: [...visibleColumns],
-      ro: 1,
-    })
-    const longUrl = `${window.location.origin}/#loc=${encoded}`
-    setIsShortening(true)
-    const shortUrl = await shortenUrl(longUrl)
-
-    const label = search.trim()
-      ? `"${search.trim()}"`
-      : filterRoutes.size > 0
-        ? `Route: ${[...filterRoutes].slice(0, 3).join(", ")}${filterRoutes.size > 3 ? "…" : ""}`
-        : "Location view"
-
-    const newLink: SavedLink = {
-      id: crypto.randomUUID(),
-      label,
-      longUrl,
-      shortUrl,
-      createdAt: new Date().toISOString(),
-      type: "share",
-    }
-    const updated = [newLink, ...savedLinks].slice(0, 50)
-    setSavedLinks(updated)
-    persistLinks(updated)
-    setShareGeneratedLink(shortUrl)
-
-    navigator.clipboard.writeText(shortUrl)
-      .then(() => toast.success("Short link copied!"))
-      .catch(() => toast.error("Failed to copy link"))
-    setIsShortening(false)
-  }
-
   return (
     <div className="flex flex-col flex-1 min-h-0 border rounded-xl overflow-hidden shadow-sm bg-background">
 
@@ -744,282 +505,8 @@ export function DeliveryTableDialog() {
           <span className="ml-auto flex items-center gap-1 h-6 px-2 rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-semibold shrink-0">
             <Info className="size-2.5" />Read-only
           </span>
-        ) : (
-          <div className="ml-auto flex items-center gap-1 shrink-0">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setLinksOpen(true)
-                setLinksTab("custom")
-                setGenerateConfirm(false)
-                setCtGeneratedLink(null)
-                setSelectedCodes(new Set())
-                setCustomTableTitle("")
-              }}
-              disabled={loading}
-              className="h-7 gap-1.5 text-xs relative"
-            >
-              <Bookmark className="w-3.5 h-3.5" />
-              Links
-              {savedLinks.length > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground px-1">
-                  {savedLinks.length}
-                </span>
-              )}
-            </Button>
-          </div>
-        )}
+) : null}
 
-        <Dialog open={linksOpen} onOpenChange={open => {
-          setLinksOpen(open)
-          if (!open) {
-            setGenerateConfirm(false)
-            setEditingLinkId(null)
-            setDeleteConfirmId(null)
-            setLinksTab("custom")
-            setSelectedCodes(new Set())
-            setCustomTableTitle("")
-            setCtGeneratedLink(null)
-          }
-        }}>
-          <DialogContent className="max-w-md p-0 gap-0 overflow-hidden rounded-2xl" style={{ backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}>
-            <DialogHeader className="px-5 pt-5 pb-3">
-              <DialogTitle className="text-base font-semibold flex items-center gap-2">
-                <Bookmark className="size-4 text-primary" /> Links
-              </DialogTitle>
-              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
-                Create a custom table, generate a share link, or manage saved links.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="px-5 pb-5">
-              <Tabs value={linksTab} onValueChange={(val: string) => setLinksTab(val as "custom" | "share" | "saved") }>
-                <TabsList className="gap-2 mb-4">
-                  <TabsTrigger value="custom">Custom</TabsTrigger>
-                  <TabsTrigger value="share">Share Link</TabsTrigger>
-                  <TabsTrigger value="saved">Saved Links</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="custom">
-                  <div className="space-y-4">
-                    <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
-                      <p className="text-[13px] font-semibold text-foreground">Create custom table</p>
-                      <p className="text-[12px] text-muted-foreground mt-1">
-                        Select points from the current view and generate a shortened custom table link.
-                      </p>
-                    </div>
-
-                    <Input
-                      placeholder="Table title (optional)"
-                      value={customTableTitle}
-                      onChange={e => setCustomTableTitle(e.target.value)}
-                      className="h-9 text-[12px] rounded-lg"
-                    />
-
-                    <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          className="w-3.5 h-3.5 accent-primary cursor-pointer"
-                          checked={selectedCodes.size === displayed.length && displayed.length > 0}
-                          onChange={e => {
-                            if (e.target.checked) setSelectedCodes(new Set(displayed.map(p => p.code)))
-                            else setSelectedCodes(new Set())
-                          }}
-                        />
-                        Select all ({displayed.length} points)
-                      </label>
-                      <span className="text-primary font-semibold">{selectedCodes.size} selected</span>
-                    </div>
-
-                    <div className="max-h-60 overflow-y-auto divide-y divide-border/30 rounded-xl border border-border/60">
-                      {displayed.map((pt, i) => (
-                        <label
-                          key={`${pt.routeId}-${pt.code}-${i}`}
-                          className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/40 transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            className="w-3.5 h-3.5 accent-primary cursor-pointer shrink-0"
-                            checked={selectedCodes.has(pt.code)}
-                            onChange={e => {
-                              setSelectedCodes(prev => {
-                                const s = new Set(prev)
-                                e.target.checked ? s.add(pt.code) : s.delete(pt.code)
-                                return s
-                              })
-                            }}
-                          />
-                          <span className="text-[11px] font-semibold text-muted-foreground w-16 shrink-0 truncate">{pt.code}</span>
-                          <span className="text-[11px] flex-1 truncate">{pt.name}</span>
-                          <span className="text-[10px] text-muted-foreground/50 shrink-0">{pt.routeCode}</span>
-                        </label>
-                      ))}
-                    </div>
-
-                    {ctGeneratedLink && (
-                      <div className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2 flex items-center gap-2">
-                        <span className="flex-1 text-[11px] font-mono text-primary truncate">{ctGeneratedLink}</span>
-                        <button
-                          onClick={() => navigator.clipboard.writeText(ctGeneratedLink!).then(() => toast.success("Copied!"))}
-                          className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                        >
-                          <Copy className="size-3.5" />
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-end gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setLinksOpen(false)}>Cancel</Button>
-                      <Button
-                        size="sm"
-                        onClick={generateCustomTableLink}
-                        disabled={selectedCodes.size === 0 || ctGenerating}
-                        className="gap-1.5"
-                      >
-                        {ctGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Link className="size-3.5" />}
-                        {ctGenerating ? "Generating…" : "Generate"}
-                      </Button>
-                    </div>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="share">
-                  <div className="space-y-4">
-                    <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
-                      <p className="text-[13px] font-semibold text-foreground">Share link</p>
-                      <p className="text-[12px] text-muted-foreground mt-1">
-                        Shorten the current view and save the shareable link to your list.
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl border border-border/60 bg-muted/40 p-3 space-y-3">
-                      {!generateConfirm ? (
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-[13px] font-semibold text-foreground">Generate new link</p>
-                            <p className="text-[12px] text-muted-foreground mt-0.5">
-                              Shorten &amp; save current view filter
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => setGenerateConfirm(true)}
-                            disabled={isShortening}
-                            className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shrink-0 disabled:opacity-50"
-                            title="Generate new link"
-                            aria-label="Generate new link"
-                          >
-                            <Link className="size-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <p className="text-[13px] font-semibold text-foreground">Confirm generate link?</p>
-                          <p className="text-[12px] text-muted-foreground">
-                            A short link will be created, saved to list, and copied to clipboard.
-                          </p>
-                          <div className="flex items-center gap-2 pt-0.5">
-                            <button
-                              onClick={async () => { await generateLink(); setGenerateConfirm(false) }}
-                              disabled={isShortening}
-                              className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-primary text-primary-foreground text-[12px] font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
-                            >
-                              {isShortening ? <Loader2 className="size-2.5 animate-spin" /> : <CheckCheck className="size-2.5" />}
-                              {isShortening ? "Shortening…" : "Generate"}
-                            </button>
-                            <button
-                              onClick={() => setGenerateConfirm(false)}
-                              className="h-7 px-3 rounded-lg bg-muted hover:bg-muted/80 text-[12px] font-medium transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {shareGeneratedLink && (
-                      <div className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2 flex items-center gap-2">
-                        <span className="flex-1 text-[11px] font-mono text-primary truncate">{shareGeneratedLink}</span>
-                        <button
-                          onClick={() => navigator.clipboard.writeText(shareGeneratedLink!).then(() => toast.success("Copied!"))}
-                          className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                        >
-                          <Copy className="size-3.5" />
-                        </button>
-                        <a
-                          href={shareGeneratedLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                        >
-                          <ExternalLink className="size-3.5" />
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="saved">
-                  <div className="space-y-4">
-                    <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
-                      <p className="text-[13px] font-semibold text-foreground">Saved links</p>
-                      <p className="text-[12px] text-muted-foreground mt-1">
-                        Custom links are shown first, share links are shown below.
-                      </p>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div>
-                        <div className="flex items-center justify-between px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                          <span>Custom Links</span>
-                          <span>{customSavedLinks.length}</span>
-                        </div>
-                        {customSavedLinks.length === 0 ? (
-                          <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-4 text-[12px] text-muted-foreground text-center">
-                            No custom links saved.
-                          </div>
-                        ) : (
-                          <div className="rounded-xl border border-border/50 overflow-hidden">
-                            {customSavedLinks.map(link => renderSavedLinkItem(link))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                          <span>Share Links</span>
-                          <span>{shareSavedLinks.length}</span>
-                        </div>
-                        {shareSavedLinks.length === 0 ? (
-                          <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-4 text-[12px] text-muted-foreground text-center">
-                            No share links saved.
-                          </div>
-                        ) : (
-                          <div className="rounded-xl border border-border/50 overflow-hidden">
-                            {shareSavedLinks.map(link => renderSavedLinkItem(link))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {savedLinks.length > 0 && (
-                      <div className="flex justify-end">
-                        <button
-                          onClick={() => { setSavedLinks([]); persistLinks([]); setDeleteConfirmId(null); setEditingLinkId(null) }}
-                          className="text-[11px] text-destructive/60 hover:text-destructive transition-colors font-medium"
-                        >
-                          Clear all
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </div>
-          </DialogContent>
-        </Dialog>
         {saveError && (
           <span className="flex items-center gap-1 text-xs font-medium text-destructive">
             <AlertCircle className="w-3.5 h-3.5" />{saveError}

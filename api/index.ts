@@ -154,6 +154,43 @@ async function handleProxyImage(req: VercelRequest, res: VercelResponse) {
   return res.status(200).send(Buffer.from(buffer));
 }
 
+// ── /api/shorten ──────────────────────────────────────────────────────────────
+async function handleShorten(req: VercelRequest, res: VercelResponse) {
+  const { url } = req.query;
+  if (!url || typeof url !== 'string') return res.status(400).json({ success: false, error: 'URL parameter required' });
+  if (!url.match(/^https?:\/\//)) return res.status(400).json({ success: false, error: 'Only HTTP/HTTPS URLs allowed' });
+  if (url.length > 3000) return res.status(400).json({ success: false, error: 'URL too long' });
+
+  const services = [
+    (target: string) => `https://is.gd/create.php?format=json&url=${encodeURIComponent(target)}`,
+    (target: string) => `https://tinyurl.com/api-create.php?url=${encodeURIComponent(target)}`,
+  ];
+
+  for (const buildUrl of services) {
+    try {
+      const response = await fetch(buildUrl(url));
+      if (!response.ok) continue;
+      const text = (await response.text()).trim();
+      if (!text) continue;
+      if (text.startsWith('{')) {
+        try {
+          const json = JSON.parse(text) as { shorturl?: string };
+          if (json.shorturl) return res.status(200).json({ success: true, shortUrl: json.shorturl });
+        } catch {
+          // fall through to raw text parsing
+        }
+      }
+      if (text.startsWith('http')) {
+        return res.status(200).json({ success: true, shortUrl: text });
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return res.status(502).json({ success: false, error: 'Unable to shorten URL at this time' });
+}
+
 // ── /api/rooster ──────────────────────────────────────────────────────────────
 async function handleRooster(req: VercelRequest, res: VercelResponse) {
   await sql`CREATE TABLE IF NOT EXISTS rooster_resources (
@@ -294,7 +331,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'deliveries':  return await handleDeliveries(req, res);
       case 'notes':       return await handleNotes(req, res);
       case 'plano':       return await handlePlano(req, res);
-      case 'proxy-image': return await handleProxyImage(req, res);
+        case 'proxy-image': return await handleProxyImage(req, res);
+      case 'shorten':     return await handleShorten(req, res);
       case 'rooster':     return await handleRooster(req, res);
       case 'route-notes': return await handleRouteNotes(req, res);
       case 'routes':      return await handleRoutes(req, res);

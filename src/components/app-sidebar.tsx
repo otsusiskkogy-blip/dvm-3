@@ -381,7 +381,7 @@ export function AppSidebar({
 
       {/* Action dropdown backdrop */}
       <div
-        className={`fixed inset-0 z-[60] bg-black/10 dark:bg-white/10 backdrop-blur-[1px] transition-all duration-200 ${actionOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        className={`fixed inset-0 z-[60] bg-black/70 backdrop-blur-[1px] transition-all duration-200 ${actionOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
         onClick={() => setActionOpen(false)}
       />
 

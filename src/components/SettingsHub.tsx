@@ -16,7 +16,7 @@ const SETTINGS_ITEMS: SettingsItem[] = [
     title: "Font",
     description: "Customize app font and text size.",
     page: "settings-appearance-font",
-    accentClass: "text-violet-400 bg-violet-400/10",
+    accentClass: "text-violet-400",
   },
   {
     icon: <Palette className="size-5" />,
@@ -30,20 +30,20 @@ const SETTINGS_ITEMS: SettingsItem[] = [
     title: "Storage",
     description: "View where your data is stored.",
     page: "settings-storage",
-    accentClass: "text-sky-400 bg-sky-400/10",
+    accentClass: "text-sky-400",
   },
   {
     icon: <Lock className="size-5" />,
     title: "Security",
     description: "Manage PIN lock and app access.",
     page: "settings-security",
-    accentClass: "text-emerald-400 bg-emerald-400/10",
+    accentClass: "text-emerald-400",
   },
 ]
 
 const USER_ITEMS = [
-  { icon: <User className="size-5" />, title: "Profile", page: "settings-profile", accentClass: "text-blue-400 bg-blue-400/10" },
-  { icon: <Bell className="size-5" />, title: "Notifications", page: "settings-notifications", accentClass: "text-orange-400 bg-orange-400/10" },
+  { icon: <User className="size-5" />, title: "Profile", page: "settings-profile", accentClass: "text-blue-400" },
+  { icon: <Bell className="size-5" />, title: "Notifications", page: "settings-notifications", accentClass: "text-orange-400" },
 ]
 
 function getInitials(name: string) {
@@ -80,7 +80,7 @@ export function SettingsHub({ onNavigate }: { onNavigate: (page: string) => void
 
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center size-9 rounded-xl bg-primary/10 text-primary shrink-0">
+        <div className="flex items-center justify-center size-9 rounded-xl text-primary shrink-0">
           <Cog className="size-5" />
         </div>
         <div>
@@ -135,7 +135,7 @@ export function SettingsHub({ onNavigate }: { onNavigate: (page: string) => void
           type="button"
           className="flex items-center gap-4 px-4 py-3.5 text-left hover:bg-muted/40 active:bg-muted/60 transition-colors w-full"
         >
-          <span className="flex items-center justify-center size-9 rounded-xl shrink-0 text-red-400 bg-red-400/10">
+          <span className="flex items-center justify-center size-9 rounded-xl shrink-0 text-red-400">
             <LogOut className="size-5" />
           </span>
           <p className="flex-1 text-[13px] font-medium text-red-400 leading-tight">Log Out</p>

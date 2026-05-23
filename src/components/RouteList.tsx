@@ -377,8 +377,8 @@ const DELIVERY_ITEMS = [
   { value: 'Daily',     label: 'Daily',     description: 'Delivery every day',          bg: 'bg-emerald-100 dark:bg-emerald-900/40', text: 'text-emerald-700 dark:text-emerald-300', dot: '#10b981' },
   { value: 'Alt 1',    label: 'Alt 1',     description: 'Odd dates (1, 3, 5…)',         bg: 'bg-violet-100 dark:bg-violet-900/40',  text: 'text-violet-700 dark:text-violet-300',  dot: '#8b5cf6' },
   { value: 'Alt 2',    label: 'Alt 2',     description: 'Even dates (2, 4, 6…)',        bg: 'bg-fuchsia-100 dark:bg-fuchsia-900/40',text: 'text-fuchsia-700 dark:text-fuchsia-300',dot: '#d946ef' },
-  { value: 'Weekday',   label: 'Weekday',   description: 'Sun – Thu',                    bg: 'bg-sky-100 dark:bg-sky-900/40',        text: 'text-sky-700 dark:text-sky-300',        dot: '#0ea5e9' },
-  { value: 'Weekday 2', label: 'Weekday',   description: 'Mon – Fri',                    bg: 'bg-blue-100 dark:bg-blue-900/40',      text: 'text-blue-700 dark:text-blue-300',      dot: '#3b82f6' },
+  { value: 'Weekday',   label: 'WD',       description: 'Sun – Thu',                    bg: 'bg-sky-100 dark:bg-sky-900/40',        text: 'text-sky-700 dark:text-sky-300',        dot: '#0ea5e9' },
+  { value: 'Weekday 2', label: 'WE',       description: 'Mon – Fri',                    bg: 'bg-blue-100 dark:bg-blue-900/40',      text: 'text-blue-700 dark:text-blue-300',      dot: '#3b82f6' },
   { value: 'Weekday 3', label: 'WA',        description: 'Sun, Tue & Thu',               bg: 'bg-indigo-100 dark:bg-indigo-900/40',  text: 'text-indigo-700 dark:text-indigo-300',  dot: '#6366f1' },
 ] as const
 const DELIVERY_MAP = new Map<string, typeof DELIVERY_ITEMS[number]>(DELIVERY_ITEMS.map(d => [d.value, d]))
