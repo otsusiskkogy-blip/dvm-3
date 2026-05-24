@@ -55,11 +55,13 @@ function SidebarProvider({
   className,
   style,
   children,
+  variant = "floating",
   ...props
 }: React.ComponentProps<"div"> & {
   defaultOpen?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  variant?: "sidebar" | "floating" | "inset"
 }) {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
@@ -126,6 +128,7 @@ function SidebarProvider({
       <TooltipProvider delayDuration={0}>
         <div
           data-slot="sidebar-wrapper"
+          data-variant={variant}
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH,
